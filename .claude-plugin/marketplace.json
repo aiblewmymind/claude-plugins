@@ -1,0 +1,12 @@
+{
+  "name": "aibmm-plugins",
+  "owner": { "name": "AI Blew My Mind" },
+  "plugins": [
+    {
+      "name": "aibmm-prompts",
+      "source": "./plugins/aibmm-prompts",
+      "description": "Search and use curated AI prompts from AI Blew My Mind",
+      "version": "0.1.0"
+    }
+  ]
+}
