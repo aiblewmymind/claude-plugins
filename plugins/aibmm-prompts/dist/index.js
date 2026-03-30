@@ -21455,20 +21455,13 @@ server.registerTool("generate_image", {
   inputSchema: external_exports.object({
     prompt: external_exports.string().describe("The filled image prompt text"),
     prompt_id: external_exports.string().optional().describe("UUID of the original prompt for tracking"),
-    image_paths: external_exports.array(external_exports.string()).optional().describe("Local file paths to reference images"),
-    image_base64: external_exports.array(external_exports.object({
-      data: external_exports.string().describe("Base64-encoded image data"),
-      mime_type: external_exports.string().optional().describe("MIME type, defaults to image/png")
-    })).optional().describe("Inline base64 images from chat uploads")
+    image_paths: external_exports.array(external_exports.string()).optional().describe("Absolute paths to reference images on the local filesystem. When the user pastes or uploads an image in chat, use the temporary file path provided by the system.")
   })
-}, async ({ prompt, prompt_id, image_paths, image_base64 }) => {
+}, async ({ prompt, prompt_id, image_paths }) => {
   try {
     const images = [];
     for (const filePath of image_paths ?? []) {
       images.push(readLocalImage(filePath));
-    }
-    for (const img of image_base64 ?? []) {
-      images.push({ base64: img.data, mimeType: img.mime_type ?? "image/png" });
     }
     const geminiKey = keyStore.getKey();
     if (geminiKey) {
