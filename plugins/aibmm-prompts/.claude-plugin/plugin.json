@@ -1,6 +1,6 @@
 {
   "name": "aibmm-prompts",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Search and use curated AI prompts from AI Blew My Mind. Includes image generation with local file references.",
   "author": {
     "name": "AI Blew My Mind"
