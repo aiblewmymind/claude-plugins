@@ -1,5 +1,5 @@
 ---
-name: set-key
+name: set-gemini-key
 description: Walk the user through getting and saving a Gemini API key for image generation.
 user-invocable: true
 ---

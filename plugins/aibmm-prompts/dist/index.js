@@ -21498,7 +21498,7 @@ ${result.text}` : ""}`
           return {
             content: [{
               type: "text",
-              text: "Your free image generation quota is used up. Set up your own Gemini API key at https://auth.aiblewmymind.com to keep generating \u2014 it's also faster since it runs locally.\n\nOnce you have a key, call the set_gemini_key tool to save it."
+              text: "Your free image generation quota is used up. Set up your own Gemini API key on https://aistudio.google.com/ and use the /set-gemini-key skill to save it locally (never leaves your computer)."
             }]
           };
         }
@@ -21508,7 +21508,7 @@ ${result.text}` : ""}`
     return {
       content: [{
         type: "text",
-        text: "To generate images, either:\n\n1. Log in with the login tool to use your free AIBMM quota\n2. Call set_gemini_key with your own Gemini API key from https://aistudio.google.com"
+        text: "To generate images, either:\n\n1. Log in with the login tool to use your free AIBMM quota\n2. Call /set-gemini-key with your own Gemini API key from https://aistudio.google.com"
       }]
     };
   } catch (err) {
