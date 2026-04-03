@@ -23,6 +23,18 @@ When the user wants to include reference images:
 - **If the user uploaded an image to this conversation**: Save it to a temporary file first, then pass the file path as `image_paths`. This is more reliable than passing base64 directly.
 - **If the image is small** (screenshots, icons): You may pass it directly as `image_base64`.
 
+## Saving Your Own Prompts (PRO)
+
+If the user wants to save a prompt they've written or used:
+
+1. Identify the most recent substantial prompt-like message in the conversation
+2. Call `draft_save_prompt` with the full prompt text
+3. Follow the returned instructions: suggest a title, category, and tags, then ask the user to confirm
+4. On confirmation, call `save_prompt` with the finalized data
+5. If the user wants changes, adjust and show again
+
+Saved prompts appear in search results under "Your prompts" and can be reused with `use_prompt`.
+
 ## Authentication
 
 - If `use_prompt` says you need to log in, call the `login` tool first.

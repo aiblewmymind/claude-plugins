@@ -21395,7 +21395,8 @@ var auth = new AuthManager(DATA_DIR);
 var keyStore = new KeyStore(DATA_DIR);
 var server = new McpServer({
   name: "aibmm-prompts",
-  version: "0.1.0"
+  version: "0.1.0",
+  description: `Daria's prompt library from the "AI Blew My Mind" (AIBMM) newsletter by Daria Cup\u0103reanu. When the user mentions "Daria's prompts", "Daria's tools", "AIBMM prompts", or anything related to Daria's curated AI prompts and image generation, use these tools.`
 });
 server.registerTool("login", {
   title: "Log in to AI Blew My Mind",
@@ -21420,7 +21421,7 @@ server.registerTool("logout", {
 var proxy = new ProxyClient();
 server.registerTool("search_prompts", {
   title: "Search Prompts",
-  description: "Search the AI Blew My Mind prompt library. Returns matching prompts with id, title, description, category, type, and usage count.",
+  description: "Search Daria's AI Blew My Mind (AIBMM) prompt library. Returns matching prompts with id, title, description, category, type, and usage count.",
   inputSchema: external_exports.object({
     query: external_exports.string().optional().describe("Search term to match against title, description, and tags"),
     category: external_exports.string().optional().describe("Filter by category")
@@ -21432,7 +21433,7 @@ server.registerTool("search_prompts", {
 });
 server.registerTool("use_prompt", {
   title: "Use Prompt",
-  description: "Fetch a prompt by ID and start the interview to fill in placeholders.",
+  description: "Fetch a prompt from Daria's AIBMM library by ID and start the interview to fill in placeholders.",
   inputSchema: external_exports.object({
     id: external_exports.string().describe("The UUID of the prompt to use")
   })
@@ -21449,9 +21450,48 @@ server.registerTool("use_prompt", {
   const result = await proxy.callTool("use_prompt", { id }, token);
   return result;
 });
+server.registerTool("draft_save_prompt", {
+  title: "Draft Save Prompt",
+  description: "Start saving a prompt to your personal library. Pass the prompt text and get instructions for confirming the save. Requires PRO subscription.",
+  inputSchema: external_exports.object({
+    prompt_text: external_exports.string().describe("The full prompt text to save")
+  })
+}, async ({ prompt_text }) => {
+  const token = await auth.getAccessToken();
+  if (!token) {
+    return {
+      content: [{
+        type: "text",
+        text: "You need to log in first. Call the login tool to authenticate with your AI Blew My Mind account."
+      }]
+    };
+  }
+  return proxy.callTool("draft_save_prompt", { prompt_text }, token);
+});
+server.registerTool("save_prompt", {
+  title: "Save Prompt",
+  description: "Save a prompt to your personal library. Call draft_save_prompt first to get the confirmation flow. Requires PRO subscription.",
+  inputSchema: external_exports.object({
+    title: external_exports.string().describe("Title for the prompt"),
+    prompt_text: external_exports.string().describe("The full prompt text to save"),
+    category: external_exports.string().optional().describe("Category (e.g. Writing, Marketing, Coding)"),
+    tags: external_exports.array(external_exports.string()).optional().describe("Tags for search")
+  })
+}, async ({ title, prompt_text, category, tags }) => {
+  const token = await auth.getAccessToken();
+  if (!token) {
+    return {
+      content: [{
+        type: "text",
+        text: "You need to log in first. Call the login tool to authenticate with your AI Blew My Mind account."
+      }]
+    };
+  }
+  return proxy.callTool("save_prompt", { title, prompt_text, category, tags }, token);
+});
 server.registerTool("generate_image", {
   title: "Generate Image",
-  description: "Generate an image using a filled prompt. Reads local image files as references. Uses your AIBMM quota or your own Gemini API key.",
+  description: "Generate an image using Daria's filled prompt. Reads local image files as references. Uses your AIBMM quota or your own Gemini API key.",
   inputSchema: external_exports.object({
     prompt: external_exports.string().describe("The filled image prompt text"),
     prompt_id: external_exports.string().optional().describe("UUID of the original prompt for tracking"),
