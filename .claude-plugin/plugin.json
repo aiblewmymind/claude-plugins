@@ -1,0 +1,8 @@
+{
+  "name": "aibmm-prompts",
+  "version": "0.2.5",
+  "description": "Search and use Daria's curated AI prompts from AI Blew My Mind (AIBMM). Includes image generation with local file references.",
+  "author": {
+    "name": "AI Blew My Mind"
+  }
+}

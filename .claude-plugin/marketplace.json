@@ -6,7 +6,7 @@
       "name": "aibmm-prompts",
       "source": "./plugins/aibmm-prompts",
       "description": "Search and use curated AI prompts from AI Blew My Mind",
-      "version": "0.2.2"
+      "version": "0.2.5"
     }
   ]
 }
