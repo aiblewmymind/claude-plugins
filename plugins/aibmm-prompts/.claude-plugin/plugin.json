@@ -1,7 +1,7 @@
 {
   "name": "aibmm-prompts",
-  "version": "0.2.5",
-  "description": "Search and use curated AI prompts from AI Blew My Mind. Includes image generation with local file references.",
+  "version": "0.12.0",
+  "description": "AI Blew My Mind (AIBMM) Amplifiers toolkit — prompts, tools, and workflows that enhance AI assistant capabilities. Includes image generation, refinement, and reference image uploads.",
   "author": {
     "name": "AI Blew My Mind"
   }

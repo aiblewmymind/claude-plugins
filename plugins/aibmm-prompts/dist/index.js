@@ -21252,7 +21252,8 @@ var ProxyClient = class {
       const headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "Authorization": `Bearer ${token ?? SUPABASE_PUBLISHABLE_KEY}`
+        "Authorization": `Bearer ${token ?? SUPABASE_PUBLISHABLE_KEY}`,
+        "x-aibmm-client": "plugin"
       };
       const response = await fetch(this.backendUrl, {
         method: "POST",
@@ -21361,7 +21362,7 @@ async function callGeminiDirect(apiKey, prompt, images) {
   if (!imageBase64) throw new Error("Gemini did not return an image");
   return { imageBase64, mimeType, text };
 }
-async function generateViaBackend(authToken, prompt, images, promptId) {
+async function generateViaBackend(authToken, prompt, images, promptId, model) {
   const imageBase64 = images.map((img) => ({
     data: img.base64,
     mime_type: img.mimeType
@@ -21375,13 +21376,17 @@ async function generateViaBackend(authToken, prompt, images, promptId) {
     body: JSON.stringify({
       prompt,
       image_base64: imageBase64,
-      prompt_id: promptId
+      prompt_id: promptId,
+      ...model ? { model } : {}
     })
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: "Unknown error" }));
     if (response.status === 429) {
       throw new Error("QUOTA_EXHAUSTED");
+    }
+    if (response.status === 402 && body?.message) {
+      throw new Error(`PAYWALL:${body.message}`);
     }
     throw new Error(body.error ?? `Backend error (${response.status})`);
   }
@@ -21419,21 +21424,9 @@ server.registerTool("logout", {
   return { content: [{ type: "text", text: "Logged out successfully." }] };
 });
 var proxy = new ProxyClient();
-server.registerTool("search_prompts", {
-  title: "Search Prompts",
-  description: "Search Daria's AI Blew My Mind (AIBMM) prompt library. Returns matching prompts with id, title, description, category, type, and usage count.",
-  inputSchema: external_exports.object({
-    query: external_exports.string().optional().describe("Search term to match against title, description, and tags"),
-    category: external_exports.string().optional().describe("Filter by category")
-  })
-}, async ({ query, category }) => {
-  const token = await auth.getAccessToken();
-  const result = await proxy.callTool("search_prompts", { query, category }, token);
-  return result;
-});
 server.registerTool("use_prompt", {
   title: "Use Prompt",
-  description: "Fetch a prompt from Daria's AIBMM library by ID and start the interview to fill in placeholders.",
+  description: "Fetch a prompt from Daria's AIBMM library by ID and start the interview to fill in placeholders. Call find_amplifiers first if you do not already know the prompt id.",
   inputSchema: external_exports.object({
     id: external_exports.string().describe("The UUID of the prompt to use")
   })
@@ -21449,6 +21442,26 @@ server.registerTool("use_prompt", {
   }
   const result = await proxy.callTool("use_prompt", { id }, token);
   return result;
+});
+server.registerTool("show_style_gallery", {
+  title: "Show Style Gallery",
+  description: "Display a visual gallery of style options for an image prompt. Call this after completing the placeholder interview for an image prompt that has a linked gallery. In hosts that support MCP Apps UI (Claude Desktop, Claude web) the gallery iframe handles image generation directly. In Claude Code and other text-only hosts, the response is a markdown list of styles \u2014 ask the user to pick one by name, then call generate_image with the chosen style's modifier_text.",
+  inputSchema: external_exports.object({
+    prompt_id: external_exports.string().describe("The UUID of the image prompt"),
+    filled_prompt: external_exports.string().describe("The prompt text with all placeholders filled, without a style modifier"),
+    image_urls: external_exports.array(external_exports.string().url()).optional().describe("Reference image URLs to pass through to generate_image")
+  })
+}, async ({ prompt_id, filled_prompt, image_urls }) => {
+  const token = await auth.getAccessToken();
+  if (!token) {
+    return {
+      content: [{
+        type: "text",
+        text: "You need to log in first. Call the login tool to authenticate with your AI Blew My Mind account."
+      }]
+    };
+  }
+  return proxy.callTool("show_style_gallery", { prompt_id, filled_prompt, image_urls }, token);
 });
 server.registerTool("draft_save_prompt", {
   title: "Draft Save Prompt",
@@ -21491,20 +21504,25 @@ server.registerTool("save_prompt", {
 });
 server.registerTool("generate_image", {
   title: "Generate Image",
-  description: "Generate an image using Daria's filled prompt. Reads local image files as references. Uses your AIBMM quota or your own Gemini API key.",
+  description: "Generate a new image from scratch using Daria's filled prompt. Use for first-time generations or for a fundamentally different direction. If the user wants to tweak a previously-generated image, call refine_image instead \u2014 it produces better results by editing the prior image directly. Reads local image files as references via image_paths. Uses your AIBMM quota, your own Gemini API key (saved via set_gemini_key), or routes through the AIBMM backend for ChatGPT (GPT Image 2) when explicitly requested.",
   inputSchema: external_exports.object({
     prompt: external_exports.string().describe("The filled image prompt text"),
     prompt_id: external_exports.string().optional().describe("UUID of the original prompt for tracking"),
-    image_paths: external_exports.array(external_exports.string()).optional().describe("Absolute paths to reference images on the local filesystem. When the user pastes or uploads an image in chat, use the temporary file path provided by the system.")
+    image_paths: external_exports.array(external_exports.string()).optional().describe("Absolute paths to reference images on the local filesystem. When the user pastes or uploads an image in chat, use the temporary file path provided by the system."),
+    base_filled_prompt: external_exports.string().optional().describe("The prompt body without any style modifier. Passed through from show_style_gallery's fallback flow so future code can use it, but the plugin's current image paths (local gemini-key and backend HTTP) do not return a UI resource, so this field is accepted but unused on those paths."),
+    style_item_id: external_exports.string().uuid().optional().describe("UUID of the gallery item chosen in show_style_gallery. Used for analytics; accepted but unused on the plugin's local paths."),
+    model: external_exports.enum(["gemini", "openai"]).optional().describe(
+      "Override the image model for this call. Pass 'openai' if the user explicitly named ChatGPT, GPT Image, or GPT Image 2. Pass 'gemini' if they explicitly named Gemini or Nano Banana Pro. Omit otherwise \u2014 the plugin defaults to Gemini. ChatGPT routes through the AIBMM backend (no local fast-path); requires a PRO subscription or a saved OpenAI key on auth.aiblewmymind.com."
+    )
   })
-}, async ({ prompt, prompt_id, image_paths }) => {
+}, async ({ prompt, prompt_id, image_paths, model }) => {
   try {
     const images = [];
     for (const filePath of image_paths ?? []) {
       images.push(readLocalImage(filePath));
     }
     const geminiKey = keyStore.getKey();
-    if (geminiKey) {
+    if (geminiKey && (!model || model === "gemini")) {
       const result = await callGeminiDirect(geminiKey, prompt, images);
       const tmpPath = `${os.tmpdir()}/aibmm-${Date.now()}.${result.mimeType.split("/")[1] || "png"}`;
       fs3.writeFileSync(tmpPath, Buffer.from(result.imageBase64, "base64"));
@@ -21515,14 +21533,16 @@ server.registerTool("generate_image", {
 
 Saved to: ${tmpPath}${result.text ? `
 
-${result.text}` : ""}`
+${result.text}` : ""}
+
+Generated with Gemini (Nano Banana Pro).`
         }]
       };
     }
     const token = await auth.getAccessToken();
     if (token) {
       try {
-        const result = await generateViaBackend(token, prompt, images, prompt_id);
+        const result = await generateViaBackend(token, prompt, images, prompt_id, model);
         return {
           content: [{
             type: "text",
@@ -21539,6 +21559,14 @@ ${result.text}` : ""}`
             content: [{
               type: "text",
               text: "Your free image generation quota is used up. Set up your own Gemini API key on https://aistudio.google.com/ and use the /set-gemini-key skill to save it locally (never leaves your computer)."
+            }]
+          };
+        }
+        if (err instanceof Error && err.message.startsWith("PAYWALL:")) {
+          return {
+            content: [{
+              type: "text",
+              text: err.message.slice("PAYWALL:".length).trim()
             }]
           };
         }
@@ -21559,6 +21587,91 @@ ${result.text}` : ""}`
       }]
     };
   }
+});
+server.registerTool("refine_image", {
+  title: "Refine Image",
+  description: "Tweak a previously-generated image using its URL as the edit base. Preserves composition and style while applying the requested change (colour, lighting, mood, small content edits). Prefer this for any request that references or modifies an existing image. For fundamentally different directions with no carryover from the prior image, call `generate_image` instead.",
+  inputSchema: external_exports.object({
+    refinement_base_url: external_exports.string().url().describe("URL of the prior image being edited"),
+    prompt: external_exports.string().describe("The refinement instruction \u2014 pass through after resolving references and stripping conversational filler"),
+    image_urls: external_exports.array(external_exports.string().url()).optional().describe("Additional reference images"),
+    prompt_id: external_exports.string().optional().describe("UUID of the original AIBMM prompt"),
+    model: external_exports.enum(["gemini", "openai"]).optional().describe(
+      "Override the image model for this refinement. Refinements default to the same provider as the rest of the session; only set this if the user explicitly names a different model. Pass 'openai' for ChatGPT/GPT Image 2; 'gemini' for Gemini/Nano Banana Pro."
+    )
+  })
+}, async ({ refinement_base_url, prompt, image_urls, prompt_id, model }) => {
+  const token = await auth.getAccessToken();
+  if (!token) {
+    return {
+      content: [{
+        type: "text",
+        text: "You need to log in first. Call the login tool to authenticate with your AI Blew My Mind account."
+      }]
+    };
+  }
+  return proxy.callTool(
+    "refine_image",
+    { refinement_base_url, prompt, image_urls, prompt_id, model },
+    token
+  );
+});
+server.registerTool("upload_reference", {
+  title: "Upload Reference Images",
+  description: "Collect one or more reference images from the user via a dedicated upload UI. Use before calling generate_image or refine_image when the requested image would meaningfully benefit from real-world reference material. Provide a `fields` array declaring each slot.",
+  inputSchema: external_exports.object({
+    fields: external_exports.array(
+      external_exports.object({
+        name: external_exports.string().min(1),
+        label: external_exports.string().min(1),
+        description: external_exports.string().optional(),
+        required: external_exports.boolean().optional()
+      })
+    ).min(1)
+  })
+}, async ({ fields }) => {
+  const token = await auth.getAccessToken();
+  if (!token) {
+    return {
+      content: [{
+        type: "text",
+        text: "You need to log in first. Call the login tool to authenticate."
+      }]
+    };
+  }
+  return proxy.callTool("upload_reference", { fields }, token);
+});
+server.registerTool("find_amplifiers", {
+  title: "Find Amplifiers",
+  description: "Search Daria's AI Blew My Mind (AIBMM) catalog of amplifiers \u2014 prompts, tools, and (soon) workflows. Returns matching entries grouped by kind. Each result row includes an explicit next_step telling you which executor to call (use_prompt for prompts, run_tool for tools). Use this as the single entry point whenever the user wants to find, browse, or use anything from AIBMM.",
+  inputSchema: external_exports.object({
+    query: external_exports.string().optional().describe("Free-text search. Omit to browse everything."),
+    kind: external_exports.enum(["prompt", "tool", "workflow"]).optional().describe("Optional narrowing to one kind."),
+    category: external_exports.string().optional().describe("Optional category filter."),
+    limit: external_exports.number().int().min(1).max(50).optional().describe("Maximum number of results per kind. Defaults to 10.")
+  })
+}, async ({ query, kind, category, limit }) => {
+  const token = await auth.getAccessToken();
+  return proxy.callTool("find_amplifiers", { query, kind, category, limit }, token);
+});
+server.registerTool("run_tool", {
+  title: "Run Amplifier",
+  description: "Execute an Amplifier tool from the catalog by slug. Call find_amplifiers first if you do not already know the slug. Returns { data, next_instructions? } \u2014 read next_instructions (when present) to learn how to use the data in your next response.",
+  inputSchema: external_exports.object({
+    slug: external_exports.string().describe("The slug of the tool to run"),
+    inputs: external_exports.record(external_exports.unknown()).optional().describe("Parameters matching the tool's input_schema")
+  })
+}, async ({ slug, inputs }) => {
+  const token = await auth.getAccessToken();
+  if (!token) {
+    return {
+      content: [{
+        type: "text",
+        text: "You need to log in first. Call the login tool to authenticate with your AI Blew My Mind account."
+      }]
+    };
+  }
+  return proxy.callTool("run_tool", { slug, inputs }, token);
 });
 server.registerTool("set_gemini_key", {
   title: "Set Gemini API Key",
